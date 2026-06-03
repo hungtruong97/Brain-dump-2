@@ -18,7 +18,8 @@ def get_db() -> firestore.Client:
     global _db
     if _db is None:
         project = os.getenv("GCP_PROJECT_ID")
-        _db = firestore.Client(project=project)
+        database = os.getenv("FIRESTORE_DATABASE", "(default)")
+        _db = firestore.Client(project=project, database=database)
     return _db
 
 
