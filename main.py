@@ -285,7 +285,7 @@ async def search(q: str = Query(..., min_length=1)):
         {
             "text": n.get("raw_text"),
             "timestamp": n.get("timestamp").isoformat(),
-            "topics": n.get("topics", []),
+            "topics": n.get("topics") or [],
         }
         for _, n in top_notes
     ]
