@@ -139,12 +139,15 @@ async def process_notes():
         *[int(p) for p in today.split("-")], tzinfo=timezone.utc
     )
 
-    raw_notes = (
+    all_unprocessed = (
         db.collection("notes")
         .where("processed", "==", False)
-        .where("timestamp", ">=", today_start)
         .get()
     )
+    raw_notes = [
+        n for n in all_unprocessed
+        if n.get("timestamp") and n.get("timestamp").replace(tzinfo=timezone.utc) >= today_start
+    ]
 
     if not raw_notes:
         return {"status": "no unprocessed notes for today"}
