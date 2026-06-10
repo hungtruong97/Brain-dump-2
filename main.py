@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 import vertexai
-from openai import OpenAI
+from vertexai.generative_models import GenerationConfig, GenerativeModel
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from google.cloud import firestore
@@ -17,7 +17,8 @@ app = FastAPI(title="Brain Dump")
 
 _db: firestore.Client | None = None
 _embedding_model: TextEmbeddingModel | None = None
-_openai: OpenAI | None = None
+_llm: GenerativeModel | None = None
+_vertex_initialized = False
 
 NIGHTLY_PROMPT = """You are processing a person's raw daily brain dump.
 Input is a list of timestamped notes from today.
@@ -72,22 +73,30 @@ def get_db() -> firestore.Client:
     return _db
 
 
-def get_embedding_model() -> TextEmbeddingModel:
-    global _embedding_model
-    if _embedding_model is None:
+def init_vertex():
+    global _vertex_initialized
+    if not _vertex_initialized:
         vertexai.init(
             project=os.getenv("GCP_PROJECT_ID"),
             location=os.getenv("VERTEX_REGION", "us-central1"),
         )
+        _vertex_initialized = True
+
+
+def get_embedding_model() -> TextEmbeddingModel:
+    global _embedding_model
+    if _embedding_model is None:
+        init_vertex()
         _embedding_model = TextEmbeddingModel.from_pretrained("text-embedding-004")
     return _embedding_model
 
 
-def get_openai() -> OpenAI:
-    global _openai
-    if _openai is None:
-        _openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    return _openai
+def get_llm() -> GenerativeModel:
+    global _llm
+    if _llm is None:
+        init_vertex()
+        _llm = GenerativeModel("gemini-2.0-flash")
+    return _llm
 
 
 def embed(text: str) -> list[float]:
@@ -159,17 +168,18 @@ async def process_notes():
         notes_json=json.dumps(notes_data, indent=2),
     )
 
-    response = get_openai().chat.completions.create(
-        model="gpt-4o-mini",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
+    response = get_llm().generate_content(
+        prompt,
+        generation_config=GenerationConfig(
+            response_mime_type="application/json",
+            max_output_tokens=4096,
+        ),
     )
 
     try:
-        result = json.loads(response.choices[0].message.content)
+        result = json.loads(response.text)
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=502, detail=f"OpenAI returned invalid JSON: {e}")
+        raise HTTPException(status_code=502, detail=f"Gemini returned invalid JSON: {e}")
 
     # Save daily summary
     db.collection("daily_summary").document(today).set({
