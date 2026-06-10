@@ -95,7 +95,7 @@ def get_llm() -> GenerativeModel:
     global _llm
     if _llm is None:
         init_vertex()
-        _llm = GenerativeModel("gemini-1.5-flash")
+        _llm = GenerativeModel("gemini-2.5-flash")
     return _llm
 
 
