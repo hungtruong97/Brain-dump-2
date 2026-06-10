@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import uuid
 from datetime import datetime, timezone
@@ -6,7 +7,7 @@ from datetime import datetime, timezone
 import vertexai
 from vertexai.generative_models import GenerationConfig, GenerativeModel
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from google.cloud import firestore
 from pydantic import BaseModel
 from vertexai.language_models import TextEmbeddingModel
@@ -63,6 +64,23 @@ Existing threads:
 Today's notes:
 {notes_json}"""
 
+SEARCH_PROMPT = """You are helping a person recall their thinking on a topic.
+Below are notes they wrote on different days, retrieved by semantic search.
+Synthesize them into a coherent thread showing how their thinking evolved.
+Be honest — if thinking is scattered or contradictory, say so.
+Be concise — 3-5 sentences maximum.
+
+Topic: {query}
+Notes: {notes_json}
+
+Return ONLY valid JSON:
+{{
+  "thread_summary": "...",
+  "first_thought": "...",
+  "latest_thought": "...",
+  "evolution": "growing | stalled | contradictory | recurring"
+}}"""
+
 
 def get_db() -> firestore.Client:
     global _db
@@ -103,6 +121,26 @@ def embed(text: str) -> list[float]:
     model = get_embedding_model()
     result = model.get_embeddings([text])
     return result[0].values
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def llm_json(prompt: str) -> dict:
+    response = get_llm().generate_content(
+        prompt,
+        generation_config=GenerationConfig(
+            response_mime_type="application/json",
+            max_output_tokens=4096,
+        ),
+    )
+    return json.loads(response.text)
 
 
 class NoteRequest(BaseModel):
@@ -166,25 +204,14 @@ async def process_notes():
         for t in db.collection("threads").get()
     ]
 
-    prompt = NIGHTLY_PROMPT.format(
-        threads_json=json.dumps(threads_data, indent=2),
-        notes_json=json.dumps(notes_data, indent=2),
-    )
-
-    response = get_llm().generate_content(
-        prompt,
-        generation_config=GenerationConfig(
-            response_mime_type="application/json",
-            max_output_tokens=4096,
-        ),
-    )
-
     try:
-        result = json.loads(response.text)
+        result = llm_json(NIGHTLY_PROMPT.format(
+            threads_json=json.dumps(threads_data, indent=2),
+            notes_json=json.dumps(notes_data, indent=2),
+        ))
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=502, detail=f"Gemini returned invalid JSON: {e}")
 
-    # Save daily summary
     db.collection("daily_summary").document(today).set({
         "date": today,
         "categories": result.get("categories", {}),
@@ -194,7 +221,6 @@ async def process_notes():
         "patterns": [],
     })
 
-    # Create new threads
     now = datetime.now(timezone.utc)
     for thread in result.get("new_threads", []):
         slug = thread.get("topic_slug", "").strip()
@@ -208,7 +234,6 @@ async def process_notes():
             "claude_summary": "",
         })
 
-    # Update existing threads
     for match in result.get("thread_matches", []):
         thread_id = match.get("thread_id", "").strip()
         note_ids = match.get("note_ids", [])
@@ -218,7 +243,6 @@ async def process_notes():
                 "last_seen": now,
             })
 
-    # Update individual notes with atomic thoughts + topics, mark processed
     atomic_map = {a["note_id"]: a for a in result.get("atomic_notes", [])}
     for note in raw_notes:
         update = {"processed": True}
@@ -233,6 +257,59 @@ async def process_notes():
         "date": today,
         "new_threads": len(result.get("new_threads", [])),
         "thread_matches": len(result.get("thread_matches", [])),
+    }
+
+
+@app.get("/api/search")
+async def search(q: str = Query(..., min_length=1)):
+    db = get_db()
+
+    query_embedding = embed(q)
+
+    all_notes = db.collection("notes").get()
+    scored = []
+    for note in all_notes:
+        note_embedding = note.get("embedding") or []
+        if not note_embedding:
+            continue
+        score = cosine_similarity(query_embedding, note_embedding)
+        scored.append((score, note))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top_notes = scored[:15]
+
+    if not top_notes:
+        return {"notes": [], "thread_summary": None, "first_seen": None, "last_seen": None}
+
+    notes_for_llm = [
+        {
+            "text": n.get("raw_text"),
+            "timestamp": n.get("timestamp").isoformat(),
+            "topics": n.get("topics", []),
+        }
+        for _, n in top_notes
+    ]
+
+    try:
+        synthesis = llm_json(SEARCH_PROMPT.format(
+            query=q,
+            notes_json=json.dumps(notes_for_llm, indent=2),
+        ))
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=502, detail=f"Gemini returned invalid JSON: {e}")
+
+    timestamps = [n.get("timestamp") for _, n in top_notes if n.get("timestamp")]
+    first_seen = min(timestamps).isoformat() if timestamps else None
+    last_seen = max(timestamps).isoformat() if timestamps else None
+
+    return {
+        "notes": notes_for_llm,
+        "thread_summary": synthesis.get("thread_summary"),
+        "first_thought": synthesis.get("first_thought"),
+        "latest_thought": synthesis.get("latest_thought"),
+        "evolution": synthesis.get("evolution"),
+        "first_seen": first_seen,
+        "last_seen": last_seen,
     }
 
 
