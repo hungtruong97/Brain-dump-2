@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Brain Dump</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --card: #21262d;
+      --border: #30363d;
+      --accent: #7c6af7;
+      --accent-dim: rgba(124,106,247,0.15);
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --red: #f85149;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      padding: 14px 18px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+    header p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tab-bar {
+      flex-shrink: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 9px 0 7px;
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-size: 10px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: color 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tab-btn.active { color: var(--accent); }
+    .tab-icon { font-size: 19px; line-height: 1; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .card-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+      color: var(--muted);
+      margin-bottom: 9px;
+      font-weight: 600;
+    }
+    .summary-text { font-size: 14px; line-height: 1.7; }
+    .section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+      color: var(--muted);
+      font-weight: 600;
+      margin: 16px 0 8px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+    .badge.green { background: rgba(63,185,80,.15); color: var(--green); }
+    .badge.yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
+    .badge.red { background: rgba(248,81,73,.15); color: var(--red); }
+
+    .note-item {
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .note-item:last-child { border-bottom: none; }
+    .note-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    .action-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+    .action-item:last-child { border-bottom: none; }
+    .checkbox {
+      width: 16px; height: 16px;
+      border: 2px solid var(--border);
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .search-row { display: flex; gap: 8px; margin-bottom: 14px; }
+    .search-input {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 11px 13px;
+      color: var(--text);
+      font-size: 15px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .search-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .thread-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 13px 14px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .thread-card.open { border-color: var(--accent); }
+    .thread-topic { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+    .thread-meta { font-size: 12px; color: var(--muted); }
+    .thread-detail { display: none; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--border); }
+    .thread-detail.open { display: block; }
+
+    .cal-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .cal-nav button {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      padding: 6px 14px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .cal-month-label { font-weight: 600; font-size: 15px; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-bottom: 16px; }
+    .cal-day-label { text-align: center; font-size: 10px; color: var(--muted); padding: 3px 0; font-weight: 600; }
+    .cal-day {
+      aspect-ratio: 1;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 7px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.12s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .cal-day:active { opacity: 0.7; }
+    .cal-day.today { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .cal-day.selected { background: var(--accent); color: #fff; border-color: transparent; }
+    .cal-day.empty { cursor: default; }
+
+    .empty { text-align: center; color: var(--muted); padding: 48px 0; font-size: 14px; line-height: 1.7; }
+    .loading { text-align: center; color: var(--muted); padding: 32px 0; font-size: 14px; }
+    .error { color: var(--red); font-size: 13px; padding: 12px 0; }
+
+    .synthesis-card { margin-bottom: 14px; }
+    .evolution-row { margin-top: 10px; display: flex; align-items: center; gap: 8px; }
+    .first-latest { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+    .first-latest b { color: var(--text); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🧠 Brain Dump</h1>
+    <p id="header-date"></p>
+  </header>
+
+  <main>
+    <div id="tab-today" class="tab-content active"></div>
+    <div id="tab-search" class="tab-content">
+      <div class="search-row">
+        <input class="search-input" id="search-input" type="text" placeholder="What were you thinking about…" autocomplete="off">
+        <button class="search-btn" onclick="doSearch()">Go</button>
+      </div>
+      <div id="search-results"></div>
+    </div>
+    <div id="tab-threads" class="tab-content"></div>
+    <div id="tab-history" class="tab-content">
+      <div class="cal-nav">
+        <button onclick="prevMonth()">‹</button>
+        <span class="cal-month-label" id="cal-month-label"></span>
+        <button onclick="nextMonth()">›</button>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div id="history-detail"></div>
+    </div>
+  </main>
+
+  <nav class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('today', this)">
+      <span class="tab-icon">📅</span>Today
+    </button>
+    <button class="tab-btn" onclick="switchTab('search', this)">
+      <span class="tab-icon">🔍</span>Search
+    </button>
+    <button class="tab-btn" onclick="switchTab('threads', this)">
+      <span class="tab-icon">🧵</span>Threads
+    </button>
+    <button class="tab-btn" onclick="switchTab('history', this)">
+      <span class="tab-icon">📜</span>History
+    </button>
+  </nav>
+
+  <script>
+    // ── Init ──────────────────────────────────────────────────────────────────
+    const now = new Date();
+    document.getElementById('header-date').textContent = now.toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric'
+    });
+
+    const TABS = ['today', 'search', 'threads', 'history'];
+    const loaded = new Set();
+
+    function switchTab(tab, btn) {
+      TABS.forEach(t => {
+        document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+      });
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (!loaded.has(tab)) { loadTab(tab); loaded.add(tab); }
+    }
+
+    function loadTab(tab) {
+      if (tab === 'today') loadToday();
+      if (tab === 'threads') loadThreads();
+      if (tab === 'history') renderCalendar();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function esc(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function fmtTime(iso) {
+      if (!iso) return '';
+      return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    function fmtDate(iso) {
+      if (!iso) return '';
+      return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    // ── TODAY ─────────────────────────────────────────────────────────────────
+    async function loadToday() {
+      const el = document.getElementById('tab-today');
+      el.innerHTML = '<div class="loading">Loading…</div>';
+      try {
+        const [summary, notes] = await Promise.all([
+          fetch('/api/today').then(r => r.json()),
+          fetch('/api/notes/today').then(r => r.json()),
+        ]);
+        el.innerHTML = renderToday(summary, notes);
+      } catch (e) {
+        el.innerHTML = '<div class="empty">Failed to load. Check connection.</div>';
+      }
+    }
+
+    function renderToday(summary, notes) {
+      let html = '';
+
+      if (!summary.exists) {
+        if (notes.length === 0) {
+          return '<div class="empty">No notes today yet.<br>Tap the widget on your phone to add one.</div>';
+        }
+        html += '<div class="card" style="margin-bottom:14px"><p style="font-size:13px;color:var(--muted)">Notes will be processed at midnight to generate your summary, mood, and action items.</p></div>';
+      } else {
+        if (summary.summary) {
+          html += `<div class="card"><div class="card-label">Day Summary</div><p class="summary-text">${esc(summary.summary)}</p></div>`;
+        }
+        if (summary.mood_signal) {
+          html += `<div class="card"><div class="card-label">Mood Signal</div><p style="font-size:14px">${esc(summary.mood_signal)}</p></div>`;
+        }
+        if (summary.action_items?.length) {
+          html += '<div class="card"><div class="card-label">Action Items</div>';
+          summary.action_items.forEach(item => {
+            html += `<div class="action-item"><div class="checkbox"></div><span>${esc(item)}</span></div>`;
+          });
+          html += '</div>';
+        }
+      }
+
+      if (notes.length) {
+        html += `<div class="section-label">${notes.length} note${notes.length !== 1 ? 's' : ''} today</div>`;
+        notes.slice().reverse().forEach(note => {
+          const topics = (note.topics || []).map(t =>
+            `<span class="badge" style="margin-right:4px">${esc(t)}</span>`
+          ).join('');
+          html += `<div class="note-item">
+            <div>${esc(note.raw_text)}</div>
+            ${topics ? `<div style="margin-top:5px">${topics}</div>` : ''}
+            <div class="note-meta">${fmtTime(note.timestamp)}</div>
+          </div>`;
+        });
+      }
+
+      return html || '<div class="empty">Nothing yet today.</div>';
+    }
+
+    // ── SEARCH ────────────────────────────────────────────────────────────────
+    document.getElementById('search-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doSearch();
+    });
+
+    async function doSearch() {
+      const q = document.getElementById('search-input').value.trim();
+      if (!q) return;
+      const el = document.getElementById('search-results');
+      el.innerHTML = '<div class="loading">Searching…</div>';
+      try {
+        const data = await fetch('/api/search?q=' + encodeURIComponent(q)).then(r => r.json());
+        el.innerHTML = renderSearch(data);
+      } catch (e) {
+        el.innerHTML = '<div class="error">Search failed. Try again.</div>';
+      }
+    }
+
+    const EVOL_CLASS = { growing: 'green', stalled: 'yellow', contradictory: 'red', recurring: '' };
+
+    function renderSearch(data) {
+      if (!data.notes || !data.notes.length) {
+        return '<div class="empty">No notes found for this topic.</div>';
+      }
+      let html = '';
+      if (data.thread_summary) {
+        const ec = EVOL_CLASS[data.evolution] || '';
+        html += `<div class="card synthesis-card">
+          <div class="card-label">AI Synthesis</div>
+          <p class="summary-text">${esc(data.thread_summary)}</p>`;
+        if (data.evolution) {
+          html += `<div class="evolution-row"><span class="badge ${ec}">${data.evolution}</span>`;
+          if (data.first_seen) html += `<span style="font-size:11px;color:var(--muted)">${fmtDate(data.first_seen)} → ${fmtDate(data.last_seen)}</span>`;
+          html += '</div>';
+        }
+        if (data.first_thought || data.latest_thought) {
+          html += '<div class="first-latest">';
+          if (data.first_thought) html += `<div><b>First:</b> ${esc(data.first_thought)}</div>`;
+          if (data.latest_thought) html += `<div><b>Latest:</b> ${esc(data.latest_thought)}</div>`;
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+      html += `<div class="section-label">${data.notes.length} matched notes</div>`;
+      data.notes.forEach(n => {
+        html += `<div class="note-item"><div>${esc(n.text)}</div><div class="note-meta">${fmtDate(n.timestamp)} ${fmtTime(n.timestamp)}</div></div>`;
+      });
+      return html;
+    }
+
+    // ── THREADS ───────────────────────────────────────────────────────────────
+    async function loadThreads() {
+      const el = document.getElementById('tab-threads');
+      el.innerHTML = '<div class="loading">Loading…</div>';
+      try {
+        const threads = await fetch('/api/threads').then(r => r.json());
+        el.innerHTML = renderThreads(threads);
+      } catch (e) {
+        el.innerHTML = '<div class="empty">Failed to load threads.</div>';
+      }
+    }
+
+    function renderThreads(threads) {
+      if (!threads.length) {
+        return '<div class="empty">No threads yet.<br>Process your first batch of notes tonight.</div>';
+      }
+      return threads.map(t => {
+        const last = t.last_seen ? new Date(t.last_seen).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        return `<div class="thread-card" onclick="toggleThread('${t.id}', this)">
+          <div class="thread-topic">${esc(t.topic)}</div>
+          <div class="thread-meta">${t.note_count} note${t.note_count !== 1 ? 's' : ''} · last active ${last}</div>
+          <div class="thread-detail" id="td-${esc(t.id)}"></div>
+        </div>`;
+      }).join('');
+    }
+
+    async function toggleThread(id, card) {
+      const detail = document.getElementById('td-' + id);
+      const isOpen = detail.classList.contains('open');
+      detail.classList.toggle('open', !isOpen);
+      card.classList.toggle('open', !isOpen);
+      if (isOpen || detail.dataset.loaded) return;
+      detail.innerHTML = '<div style="font-size:13px;color:var(--muted)">Loading…</div>';
+      const topic = card.querySelector('.thread-topic').textContent;
+      try {
+        const data = await fetch('/api/search?q=' + encodeURIComponent(topic)).then(r => r.json());
+        let html = '';
+        if (data.thread_summary) {
+          html += `<p style="font-size:13px;line-height:1.6;margin-bottom:8px">${esc(data.thread_summary)}</p>`;
+        }
+        (data.notes || []).slice(0, 5).forEach(n => {
+          html += `<div style="font-size:12px;color:var(--muted);padding:5px 0;border-bottom:1px solid var(--border)">${esc(n.text)}<br><span style="font-size:10px">${fmtDate(n.timestamp)}</span></div>`;
+        });
+        detail.innerHTML = html || '<span style="font-size:13px;color:var(--muted)">No notes found.</span>';
+        detail.dataset.loaded = '1';
+      } catch (e) {
+        detail.innerHTML = '<span class="error">Failed to load.</span>';
+      }
+    }
+
+    // ── HISTORY ───────────────────────────────────────────────────────────────
+    let calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    let selectedDate = null;
+
+    function renderCalendar() {
+      const label = document.getElementById('cal-month-label');
+      const grid = document.getElementById('cal-grid');
+      if (!label || !grid) return;
+      label.textContent = calMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      const DAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+      let html = DAYS.map(d => `<div class="cal-day-label">${d}</div>`).join('');
+      const firstDow = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1).getDay();
+      const daysInMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0).getDate();
+      const todayStr = now.toISOString().slice(0, 10);
+      for (let i = 0; i < firstDow; i++) html += '<div class="cal-day empty"></div>';
+      for (let d = 1; d <= daysInMonth; d++) {
+        const ds = `${calMonth.getFullYear()}-${String(calMonth.getMonth()+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const cls = ds === selectedDate ? 'selected' : ds === todayStr ? 'today' : '';
+        html += `<div class="cal-day ${cls}" onclick="selectDay('${ds}')">${d}</div>`;
+      }
+      grid.innerHTML = html;
+    }
+
+    function prevMonth() {
+      calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1);
+      renderCalendar();
+    }
+    function nextMonth() {
+      calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1);
+      renderCalendar();
+    }
+
+    async function selectDay(date) {
+      selectedDate = date;
+      renderCalendar();
+      const el = document.getElementById('history-detail');
+      el.innerHTML = '<div class="loading">Loading…</div>';
+      try {
+        const data = await fetch('/api/history/' + date).then(r => r.json());
+        el.innerHTML = renderHistoryDay(data, date);
+      } catch (e) {
+        el.innerHTML = '<div class="error">Failed to load.</div>';
+      }
+    }
+
+    function renderHistoryDay(data, date) {
+      const label = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+      });
+      if (!data.exists) {
+        return `<div class="card"><div class="card-label">${label}</div><p style="color:var(--muted);font-size:14px">No data for this day.</p></div>`;
+      }
+      let html = `<div class="card"><div class="card-label">${label}</div>`;
+      if (data.summary) html += `<p class="summary-text">${esc(data.summary)}</p>`;
+      if (data.mood_signal) html += `<p style="font-size:12px;color:var(--muted);margin-top:8px">Mood: ${esc(data.mood_signal)}</p>`;
+      html += '</div>';
+      if (data.action_items?.length) {
+        html += '<div class="card"><div class="card-label">Action Items</div>';
+        data.action_items.forEach(item => {
+          html += `<div class="action-item"><div class="checkbox"></div><span>${esc(item)}</span></div>`;
+        });
+        html += '</div>';
+      }
+      return html;
+    }
+
+    // Kick off
+    loadTab('today');
+  </script>
+</body>
+</html>

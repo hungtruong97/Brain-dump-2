@@ -8,6 +8,7 @@ import vertexai
 from vertexai.generative_models import GenerationConfig, GenerativeModel
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from google.cloud import firestore
 from pydantic import BaseModel
 from vertexai.language_models import TextEmbeddingModel
@@ -311,6 +312,75 @@ async def search(q: str = Query(..., min_length=1)):
         "first_seen": first_seen,
         "last_seen": last_seen,
     }
+
+
+@app.get("/api/today")
+async def api_today():
+    db = get_db()
+    today = datetime.now(timezone.utc).date().isoformat()
+    doc = db.collection("daily_summary").document(today).get()
+    if not doc.exists:
+        return {"date": today, "exists": False}
+    data = doc.to_dict()
+    data["date"] = today
+    data["exists"] = True
+    return data
+
+
+@app.get("/api/notes/today")
+async def api_notes_today():
+    db = get_db()
+    today = datetime.now(timezone.utc).date().isoformat()
+    today_start = datetime(*[int(p) for p in today.split("-")], tzinfo=timezone.utc)
+    notes = []
+    for n in db.collection("notes").get():
+        ts = n.get("timestamp")
+        if ts and ts.replace(tzinfo=timezone.utc) >= today_start:
+            notes.append({
+                "id": n.id,
+                "raw_text": n.get("raw_text"),
+                "timestamp": n.get("timestamp").isoformat(),
+                "processed": n.get("processed"),
+                "atomic_notes": n.get("atomic_notes") or [],
+                "topics": n.get("topics") or [],
+            })
+    notes.sort(key=lambda x: x["timestamp"])
+    return notes
+
+
+@app.get("/api/threads")
+async def api_threads():
+    db = get_db()
+    result = []
+    for t in db.collection("threads").get():
+        d = t.to_dict()
+        d["id"] = t.id
+        d["note_count"] = len(d.get("note_ids", []))
+        if d.get("first_seen"):
+            d["first_seen"] = d["first_seen"].isoformat()
+        if d.get("last_seen"):
+            d["last_seen"] = d["last_seen"].isoformat()
+        d.pop("note_ids", None)
+        result.append(d)
+    result.sort(key=lambda x: x.get("last_seen", ""), reverse=True)
+    return result
+
+
+@app.get("/api/history/{date}")
+async def api_history(date: str):
+    db = get_db()
+    doc = db.collection("daily_summary").document(date).get()
+    if not doc.exists:
+        return {"date": date, "exists": False}
+    data = doc.to_dict()
+    data["date"] = date
+    data["exists"] = True
+    return data
+
+
+@app.get("/")
+async def dashboard():
+    return FileResponse("static/index.html")
 
 
 @app.get("/health")
