@@ -3,8 +3,8 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-import anthropic
 import vertexai
+from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from google.cloud import firestore
@@ -17,7 +17,7 @@ app = FastAPI(title="Brain Dump")
 
 _db: firestore.Client | None = None
 _embedding_model: TextEmbeddingModel | None = None
-_claude: anthropic.Anthropic | None = None
+_openai: OpenAI | None = None
 
 NIGHTLY_PROMPT = """You are processing a person's raw daily brain dump.
 Input is a list of timestamped notes from today.
@@ -83,11 +83,11 @@ def get_embedding_model() -> TextEmbeddingModel:
     return _embedding_model
 
 
-def get_claude() -> anthropic.Anthropic:
-    global _claude
-    if _claude is None:
-        _claude = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    return _claude
+def get_openai() -> OpenAI:
+    global _openai
+    if _openai is None:
+        _openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai
 
 
 def embed(text: str) -> list[float]:
@@ -159,16 +159,17 @@ async def process_notes():
         notes_json=json.dumps(notes_data, indent=2),
     )
 
-    message = get_claude().messages.create(
-        model="claude-haiku-4-5-20251001",
+    response = get_openai().chat.completions.create(
+        model="gpt-4o-mini",
         max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
     )
 
     try:
-        result = json.loads(message.content[0].text)
+        result = json.loads(response.choices[0].message.content)
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=502, detail=f"Claude returned invalid JSON: {e}")
+        raise HTTPException(status_code=502, detail=f"OpenAI returned invalid JSON: {e}")
 
     # Save daily summary
     db.collection("daily_summary").document(today).set({
